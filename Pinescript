@@ -1,0 +1,75 @@
+//@version=6
+indicator("Market Session Boundaries — v6 (Top, Short, No Text)", overlay=true, max_lines_count=500, max_labels_count=1)
+
+asiaSess = input.session("0000-0600", "Asia Session (UTC)")
+euSess   = input.session("0700-1530", "Europe Session (UTC)")
+nySess   = input.session("1330-2000", "New York Session (UTC)")
+
+asiaBase = input.color(color.aqua,    "Asia Color")
+euBase   = input.color(color.lime,    "Europe Color")
+nyBase   = input.color(color.fuchsia, "New York Color")
+lineW       = input.int(2,  "Line Width", minval=1, maxval=6)
+opacityPct  = input.int(25, "Line Opacity (0=solid, 100=invisible)", minval=0, maxval=100)
+
+useExchange = input.bool(false, "Use Exchange Time (instead of UTC)")
+maxKeep     = input.int(400, "Max Lines to Keep (auto-prune)", minval=50, maxval=480)
+
+spanLen      = input.int(300,   "Lookback Bars (range basis)", minval=50, maxval=5000)
+heightPct    = input.float(0.04,"Min Height: % of range",      minval=0.01, maxval=0.30, step=0.005)
+heightTicks  = input.int(20,    "Min Height: ticks",           minval=1, maxval=300)
+topOffsetPct = input.float(0.0005, "Top Offset %",             minval=0.0, maxval=0.02, step=0.0005)
+
+sessTZ() => useExchange ? "exchange" : "UTC"
+inSession(sess) => not na(time(timeframe.period, sess, sessTZ()))
+sessionOpen(s)  => s and not s[1]
+sessionClose(s) => not s and s[1]
+
+getTopAnchors() =>
+    _top = ta.highest(high, spanLen)
+    _bot = ta.lowest(low,  spanLen)
+    _rng = math.max(_top - _bot, syminfo.mintick)
+    _y1  = _top - _rng * topOffsetPct
+    _h   = math.max(_rng * heightPct, syminfo.mintick * heightTicks)
+    _y2  = _y1 - _h
+    [_y1, _y2]
+
+var lines = array.new_line()
+
+drawVLine(baseCol, style) =>
+    col = color.new(baseCol, opacityPct)
+    [y1, y2] = getTopAnchors()
+    ln = line.new(bar_index, y1, bar_index, y2, xloc=xloc.bar_index, extend=extend.none, color=col, width=lineW, style=style)
+    array.push(lines, ln)
+    if array.size(lines) > maxKeep
+        old = array.shift(lines)
+        line.delete(old)
+
+reanchorAll() =>
+    sz = array.size(lines)
+    if sz > 0
+        [y1, y2] = getTopAnchors()
+        for i = 0 to sz - 1
+            ln = array.get(lines, i)
+            line.set_y1(ln, y1)
+            line.set_y2(ln, y2)
+
+asiaNow = inSession(asiaSess)
+euNow   = inSession(euSess)
+nyNow   = inSession(nySess)
+
+if sessionOpen(asiaNow)
+    drawVLine(asiaBase, line.style_solid)
+if sessionClose(asiaNow)
+    drawVLine(asiaBase, line.style_dashed)
+
+if sessionOpen(euNow)
+    drawVLine(euBase, line.style_solid)
+if sessionClose(euNow)
+    drawVLine(euBase, line.style_dashed)
+
+if sessionOpen(nyNow)
+    drawVLine(nyBase, line.style_solid)
+if sessionClose(nyNow)
+    drawVLine(nyBase, line.style_dashed)
+
+reanchorAll()
